@@ -4,8 +4,12 @@ from models.discriminator import Discriminator
 from models.classifier import Classifier
 from models.generator import Generator
 from models.resnet_classifier import resnetClassifier
+import matplotlib.pyplot as plt
+import numpy as np
 
 REAL_LABEL=0.9
+
+GAUSS_FILTER_SZ=1
 
 class CycleGAN:
     def __init__(self,
@@ -65,13 +69,26 @@ class CycleGAN:
         cycle_loss = self.cycle_consistency_loss(self.G, self.F, x, y)
 
         # X -> Y
-        fake_y = self.G(x)
+        fake_y1 = self.G(x)
+
+        # RIT ML FINAL PROJECT - Added next 3 lines
+        gauss_y = gaussian_filter(GAUSS_FILTER_SZ)
+        kernely = tf.tile(gauss_y[:, :, tf.newaxis, tf.newaxis], [1, 1, 3, 1])
+        fake_y = tf.nn.separable_conv2d(fake_y1, tf.cast(kernely, dtype=tf.float32), 
+                                        tf.eye(3, batch_shape=[1, 1]), strides=[1, 1, 1, 1], padding='SAME')
+
         G_gan_loss = self.generator_loss(self.D_Y, fake_y, use_lsgan=self.use_lsgan)
         G_loss = G_gan_loss + cycle_loss
         D_Y_loss = self.discriminator_loss(self.D_Y, y, fake_y, use_lsgan=self.use_lsgan)
 
         # Y -> X
-        fake_x = self.F(y)
+        fake_x1 = self.F(y)
+
+        # RIT ML FINAL PROJECT - Added next 3 lines
+        gauss_x = gaussian_filter(GAUSS_FILTER_SZ)
+        kernelx = tf.tile(gauss_x[:, :, tf.newaxis, tf.newaxis], [1, 1, 3, 1])
+        fake_x = tf.nn.separable_conv2d(fake_x1, tf.cast(kernelx, dtype=tf.float32), tf.eye(3, batch_shape=[1, 1]), strides=[1, 1, 1, 1], padding='SAME')
+
         F_gan_loss = self.generator_loss(self.D_X, fake_x, use_lsgan=self.use_lsgan)
         F_loss = F_gan_loss + cycle_loss# - Disperse_loss
         D_X_loss = self.discriminator_loss(self.D_X, x, fake_x, use_lsgan=self.use_lsgan)
@@ -209,3 +226,22 @@ class CycleGAN:
     def learning_loss(self, teacher_out, student_out):
         loss = tf.reduce_mean(tf.math.squared_difference(teacher_out, student_out))
         return loss
+
+
+# RIT ML FINAL PROJECT
+# Added function for generating the gaussian filter
+# for blurring the images
+def gaussian_filter(kernel_size, sigma=1, muu=0):
+    # Initializing value of x,y as grid of kernel size
+    # in the range of kernel size
+
+    x, y = np.meshgrid(np.linspace(-1, 1, kernel_size),
+                       np.linspace(-1, 1, kernel_size))
+    dst = np.sqrt(x ** 2 + y ** 2)
+
+    # lower normal part of gaussian
+    normal = 1 / (2.0 * np.pi * sigma**2)
+
+    # Calculating Gaussian filter
+    gauss = np.exp(-((dst - muu) ** 2 / (2.0 * sigma ** 2))) #* normal
+    return gauss
